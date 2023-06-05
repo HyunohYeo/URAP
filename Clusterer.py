@@ -62,8 +62,6 @@ class Strawman_Clusterer:
             self.get_cluster_sum()
             self.apply_cluster_cuts() #applies to cluster and genP
             self.apply_sampling_fraction()
-            if self.normalization: #do normalization only if normalization is True
-                self.do_normalization
             self.np_save_genP_clusterE()
 
 
@@ -75,6 +73,8 @@ class Strawman_Clusterer:
             self.apply_cluster_cuts() #applies to cluster and genP, skipping 0's
             self.apply_sampling_fraction() #absolute scale
             #normalization
+            if self.normalization: #do normalization only if normalization is True
+                self.do_normalization()
             self.np_save_genP_clusterE()
 
 
@@ -138,12 +138,10 @@ class Strawman_Clusterer:
                 print("Doing Cluster Sum for z-bin %i..."%(zbin))
                 segmented_cluster_sum.append(ak.to_numpy(ak.sum(self.hits_e[mask], axis=-1)))
 
-            print(f"segmented_cluster_sum: {segmented_cluster_sum}")
             segmented_cluster_sum = np.swapaxes(segmented_cluster_sum,0,1)
             print(segmented_cluster_sum)
             self.segmented_cluster_sum = np.asarray(segmented_cluster_sum)
             self.cluster_sum = np.sum(segmented_cluster_sum, axis=-1)
-            print(f"segmented_cluster_sum axis: {segmented_cluster_sum}")
             
             print("Cluster Sum(s) Done!")
 
@@ -160,6 +158,8 @@ class Strawman_Clusterer:
 
         self.genP = np.sqrt(genPx*genPx + genPy*genPy + genPz*genPz)
         self.genTheta = np.arccos(genPz/self.genP)*180/np.pi
+        
+        print("min", min(self.genP))
 
         if (self.take_log):
             self.genP = np.log10(self.genP)
@@ -172,7 +172,6 @@ class Strawman_Clusterer:
 
         cluster_cut = self.cluster_sum > self.cluster_e_min
         print(np.shape(cluster_cut),"CUTS")
-        print(f"Cluster Cut: {cluster_cut}")
         self.cluster_sum = self.cluster_sum[cluster_cut]
         #Above should be placed into it's own function if more complex
         
@@ -182,71 +181,41 @@ class Strawman_Clusterer:
 
 
         if self.segmented_cluster_sum_exist():
-            print(f"Segmented Cluster Sum Swapped Axes: {self.segmented_cluster_sum}")
 
             if (self.n_Z_layers > 1) :
 
                 print("Before Cuts, N = ",np.shape(self.segmented_cluster_sum))
                 segmented_cluster_sum = self.segmented_cluster_sum[cluster_cut]
                 print("After Cuts, N = ",np.shape(self.segmented_cluster_sum))
-    
-            if (self.take_log):
-                #Additional cut for 0's in each layers
-                apply_cut = []
-                for i in range(len(segmented_cluster_sum)):
-                    apply_cut.append((segmented_cluster_sum[i][segmented_cluster_sum[i] > 0]))
-                segmented_cluster_sum = apply_cut
-                print(f"Yes {segmented_cluster_sum}")
-                for i in range(len(segmented_cluster_sum)): #errors unless np.log10 them iteratively
-                    segmented_cluster_sum[i] = np.log10(segmented_cluster_sum[i])
 
-                    average = np.mean(segmented_cluster_sum[i])
-                    segmented_cluster_sum[i] = np.append(segmented_cluster_sum[i], ([average] * (self.n_Z_layers - len(segmented_cluster_sum[i])))) 
-                    
-                print(f"sfdsffsd{segmented_cluster_sum}")
-                self.segmented_cluster_sum = np.asarray(segmented_cluster_sum)
-                print(f"Segmented Cluster Sum (log): {self.segmented_cluster_sum}")
-        
-        if (self.take_log):
-            self.cluster_sum = np.log10(self.cluster_sum)
-            print(f"Cluster Sum (log): {self.cluster_sum}")
-                
         return
 
     def apply_sampling_fraction(self):
 
         self.cluster_sum = self.cluster_sum/self.sampling_fraction
+        
+        if self.take_log:
+            self.cluster_sum = np.log10(self.cluster_sum)
 
         if self.segmented_cluster_sum_exist():
             self.segmented_cluster_sum = self.segmented_cluster_sum/self.sampling_fraction
-        
-        if (self.take_log):
-            for i in range(len(self.segmented_cluster_sum)):
-                self.segmented_cluster_sum[i] = self.segmented_cluster_sum[i]
+            
+            if self.take_log:
+                for i in range(len(self.segmented_cluster_sum)):
+                    for j in range(len(self.segmented_cluster_sum[i])):
+                        if self.segmented_cluster_sum[i][j] == 0.0:
+                            self.segmented_cluster_sum[i][j] = 1.0
+                    self.segmented_cluster_sum[i] = np.log10(self.segmented_cluster_sum[i])
+                
 
         print(f"Applied Sampling Fraction of {self.sampling_fraction} to Cluster Sums")
         
         
+        
     def do_normalization(self):
-        for i in range(len(self.cluster_sum)):
-            mean_i = np.mean(self.cluster_sum[i])
-            std_i = np.std(self.cluster_sum[i])
-            
-            for j in range(len(self.cluster_sum[i])):
-                value_ij = self.cluster_sum[i][j]
-                self.cluster_sum[i][j] = (value_ij - mean_i) / std_i
-
-        if self.segmented_cluster_sum_exist():
-            for i in range(len(self.segmented_cluster_sum)):
-                mean_seg_i = np.mean(self.segmented_cluster_sum[i])
-                std_seg_i = np.std(self.segmented_cluster_sum[i])
-                
-                for j in range(len(self.segmented_cluster_sum[i])):
-                    value_seg_ij = self.segmented_cluster_sum[i][j]
-                    self.segmented_cluster_sum[i][j] = (value_seg_ij - mean_seg_i) / std_seg_i
-                    
-        #Edit for genP normalization
-
+        #FIXME
+        print("to be fixed for normalization")
+        
     def np_save_genP_clusterE(self):
 
         np.save(f"{self.path}/clusterSum.npy",self.cluster_sum)
